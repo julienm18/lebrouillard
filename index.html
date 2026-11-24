@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>LE BROUILLARD · Mission Prévention</title>
+<style>
+:root{--r:#ff2e4d;--c:#2ee6ff;--y:#ffd166;--bg:#07040d;--ink:#e8f7ff}
+*{box-sizing:border-box}
+html,body{margin:0;width:100vw;height:100vh;overflow:hidden;background:var(--bg);color:var(--ink);font-family:"Courier New",Courier,monospace;font-size:clamp(13px,1.6vw + 8px,17px)}
+canvas{display:block}
+#bg{position:absolute;left:0;top:0}
+#lt{position:absolute;left:0;top:0;z-index:3;pointer-events:none}
+#app{position:absolute;inset:0;z-index:2;display:flex;flex-direction:column;padding:62px 10px 8px;gap:6px}
+#hud{display:flex;gap:10px;align-items:center;font-size:.8em;letter-spacing:1px;flex-wrap:wrap}
+#hud .bar{flex:1;min-width:90px;height:10px;border:1px solid var(--c);background:#0008}
+#ab{height:100%;width:70%;background:var(--c);box-shadow:0 0 10px currentColor;transition:width .5s}
+#mu{background:#0008;border:1px solid var(--c);color:var(--ink);cursor:pointer;padding:3px 8px;font:inherit}
+#panel{flex:1;overflow:auto;border:2px solid var(--c);box-shadow:0 0 18px #2ee6ff55,inset 0 0 22px #2ee6ff33;background:#04101acc;padding:14px;border-radius:6px}
+#crt{position:fixed;inset:0;z-index:9;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(0,0,0,.28) 0 1px,transparent 1px 3px),radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.65));animation:fl 4s infinite}
+@keyframes fl{0%,92%,100%{opacity:1}94%{opacity:.82}96%{opacity:.95}}
+.logo{margin:6px 0;font-size:clamp(28px,8vw,60px);letter-spacing:.12em;color:var(--r);text-shadow:0 0 8px var(--r),0 0 24px var(--r),3px 3px 0 #5a0014;text-align:center;font-weight:900}
+.sub{text-align:center;color:var(--c);letter-spacing:.2em;margin:0 0 12px;font-size:.85em}
+.tag{color:var(--r);letter-spacing:.15em;font-weight:700;text-shadow:0 0 8px var(--r);margin-bottom:8px}
+.nar{line-height:1.5;min-height:3.5em;margin:6px 0 12px;cursor:pointer}
+.tiny{font-size:.8em;opacity:.8;line-height:1.4}
+.roles{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin:10px 0}
+.role,.ch{display:block;width:100%;text-align:left;background:#02080dcc;color:var(--ink);border:1px solid var(--c);padding:10px 12px;margin:6px 0;cursor:pointer;font:inherit;line-height:1.35;transition:.15s}
+.role small{display:block;opacity:.75;margin-top:4px}
+.role:hover,.ch:hover{border-color:var(--r);box-shadow:0 0 14px var(--r);background:#1a0409}
+.role.on{border-color:var(--y);box-shadow:0 0 14px var(--y)}
+.ch.rl{border-color:var(--y)}
+.ch.go{text-align:center;color:var(--y);border-color:var(--y);font-weight:700;letter-spacing:.1em}
+.ok{color:#7dff9b}.ko{color:var(--r)}
+h2{color:var(--c);letter-spacing:.1em;margin:4px 0 8px;text-shadow:0 0 10px var(--c)}
+h3{color:var(--y);margin:14px 0 4px}
+#gc{width:100%;height:min(48vh,360px);touch-action:none;background:#000;border:1px solid var(--c);cursor:crosshair}
+.pp{border:1px dashed var(--y);padding:8px;margin:8px 0}
+li{margin:3px 0;line-height:1.4}
+@media print{html,body{overflow:visible;height:auto;background:#fff;color:#000}#bg,#lt,#crt,#hud,.noprint{display:none!important}#app{position:static;padding:0}#panel{border:0;box-shadow:none;background:#fff;overflow:visible}h2,h3,.tag{color:#000;text-shadow:none}}
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas><canvas id="lt"></canvas>
+<div id="app">
+  <div id="hud"><span>ANCRAGE <span id="av">70%</span></span><div class="bar"><div id="ab"></div></div><span id="sc">★ 0</span><span id="mi">□□□</span><button id="mu" aria-label="Son">🔊</button></div>
+  <div id="panel"></div>
+</div>
+<div id="crt"></div>
+<script>
+(function(){
+"use strict";
+/* ===== DONNÉES MODIFIABLES : ressources locales de la commune ===== */
+const LOCAL=[
+["Drogues Info Service","0 800 23 13 13 · gratuit et anonyme"],
+["Fil Santé Jeunes","0 800 235 236 · gratuit et anonyme"],
+["Alcool Info Service","0 980 980 930 · anonyme"],
+["Tabac Info Service","39 89"],
+["Urgence santé","15 (SAMU) ou 112 · en cas de malaise, ne reste pas seul"],
+["PAEJ (Point Accueil Écoute Jeunes)","[À COMPLÉTER : adresse et téléphone de la commune]"],
+["Maison des Adolescents","[À COMPLÉTER]"],
+["Service jeunesse de la mairie","[À COMPLÉTER : contact, horaires]"]];
+const ROLES={
+radio:{n:"Opérateur Radio",i:"📻",d:"Tu captes les signaux et gardes le contact. Départ 70%, oscilloscope plus tolérant.",a:70,osc:1.5,uv:1,br:1},
+eclaireur:{n:"Éclaireur",i:"🔦",d:"Tu repères ce que les autres ne voient pas. Départ 65%, scanner UV élargi.",a:65,osc:1,uv:1.5,br:1},
+soutien:{n:"Soutien d’Équipe",i:"🤝",d:"Tu tiens le collectif. Départ 80%, respiration plus douce.",a:80,osc:1,uv:1,br:1.35}};
+const R=ROLES;
+/* c: l=choix, a=ancrage, p=points, n=scène suivante ("end"=mini-jeu), f=retour narratif, r=réservé à un rôle */
+const MISSIONS=[
+{t:"FRÉQUENCE 01 · LA SOIRÉE",game:"osc",
+ gi:"Les basses brouillent ton signal. Glisse ton doigt ou la souris : ↔ règle la fréquence, ↕ règle la phase. Cale la ligne rouge sur la ligne cyan et tiens bon. Le Brouillard promet un faux calme : cherche la vraie fréquence.",
+ intro:"Samedi soir, anniversaire de Léo. Le salon vibre, tout le monde rit trop fort. Quelqu’un te tend un gobelet : « Allez, juste pour goûter, tout le monde le fait. » Sur les enceintes, le Brouillard s’infiltre. Les sons s’étirent déjà un peu.",
+ keys:["Un « non » n’a pas besoin d’excuse ni de justification.","Ne laisse jamais quelqu’un seul s’il va mal : appelle le 15 ou le 112.","Ne monte jamais avec un conducteur qui a consommé : appelle un adulte."],
+ scenes:{
+ s0:{t:"Le gobelet est là, tendu vers toi. Plusieurs regards attendent ta réaction.",c:[
+  {l:"« Non merci, je reste sur mon eau. »",a:15,p:100,n:"s1",f:"Un « non » simple. Quelqu’un rigole, puis passe à autre chose. Le Brouillard recule d’un pas."},
+  {l:"Je prends, pour ne pas faire bizarre.",a:-25,p:0,n:"s2",f:"Tu ne sais pas ce qu’il y avait dedans. Autour de toi, les sons s’étirent et les visages se déforment."},
+  {l:"Je fais semblant de boire et je m’éloigne.",a:5,p:40,n:"s1",f:"Tu gagnes du temps, mais la pression reste dans ta tête."},
+  {r:"radio",l:"📻 J’envoie un message à l’équipe : « Besoin d’un prétexte pour partir. »",a:20,p:100,n:"s1",f:"Réponse en 10 secondes : « On t’appelle, tu dis que c’est ta mère. » Le lien tient."},
+  {r:"eclaireur",l:"🔦 Je repère la sortie et qui est encore lucide autour de moi.",a:20,p:100,n:"s1",f:"Tu repères deux amis posés près de la porte. Tu n’es plus seul."},
+  {r:"soutien",l:"🤝 J’emmène un pote prendre l’air avec moi.",a:20,p:100,n:"s1",f:"Dehors, vous respirez. À deux, dire non devient facile."}]},
+ s1:{t:"Dehors, l’air est frais. Maxime vous rejoint, pâle, il s’appuie contre le mur : « Je me sens pas bien… »",c:[
+  {l:"Je reste avec lui, je l’assieds et j’appelle le 15 s’il ne va pas mieux.",a:20,p:100,n:"end",f:"Tu restes. Le régulateur du 15 te guide au téléphone. Ne jamais laisser quelqu’un seul : c’est ça, l’ancrage."},
+  {l:"Chacun rentre de son côté, il y est habitué.",a:-15,p:0,n:"end",f:"Il rentre seul. Tu y penseras toute la nuit."},
+  {l:"Je préviens un adulte de confiance pour venir nous chercher.",a:20,p:100,n:"end",f:"Un adulte arrive vite, sans te juger. Tu as bien fait de l’appeler."}]},
+ s2:{t:"Ça tourne un peu. Un ami qui a bu propose de te ramener en voiture : « Je gère, t’inquiète. »",c:[
+  {l:"Je refuse et j’appelle un parent ou un adulte.",a:25,p:100,n:"end",f:"Tu rentres en sécurité. Ce soir-là, tu as protégé ton ami aussi."},
+  {l:"Je monte, ça ira.",a:-30,p:0,n:"end",f:"Le trajet est un flou. Tu t’en sors, mais d’extrême justesse. Personne ne devrait jouer sa chance."}]}}},
+{t:"FRÉQUENCE 02 · TENIR LE COUP",game:"br",
+ gi:"Protocole d’ancrage : MAINTIENS pour inspirer (l’orbe grossit), RELÂCHE pour expirer. Suis l’anneau cyan, 6 cycles. À chaque cycle réussi, ton collectif se rallume.",
+ intro:"Semaine d’examens. Tu dors mal, ton téléphone vibre sans arrêt. Dans le couloir, un camarade te glisse : « Un truc pour tenir, ça débranche. » Le Brouillard promet un soulagement rapide, sans jamais dire ce qu’il coûte.",
+ keys:["Un produit « pour tenir » masque la fatigue, il ne la règle pas.","Parler à l’infirmier·ère ou à la Maison des Adolescents : c’est un réflexe de pro.","Sommeil, pauses, air et eau : une routine simple soutient mieux que n’importe quel produit."],
+ scenes:{
+ s0:{t:"Il attend ta réponse, le petit sachet à la main. Dans ta tête : « Et si ça m’aidait vraiment ? »",c:[
+  {l:"Je refuse, et je lui dis que je suis à bout.",a:20,p:100,n:"s1",f:"Il avoue qu’il est crevé aussi. Vous vous asseyez cinq minutes."},
+  {l:"Je le garde « au cas où ».",a:-20,p:0,n:"s2",f:"Le « au cas où » prend de la place dans ta poche, et dans ta tête."},
+  {r:"radio",l:"📻 Je note le numéro de Drogues Info Service pour poser mes questions, anonymement.",a:25,p:100,n:"s1",f:"Tu as un contact fiable. Personne n’a besoin de savoir que tu as appelé."},
+  {r:"eclaireur",l:"🔦 Je liste ce qui m’épuise vraiment : sommeil, écrans, pression.",a:20,p:100,n:"s1",f:"Sur le papier, c’est clair : tu dors 5 heures et tu scrolles jusqu’à 2 h."},
+  {r:"soutien",l:"🤝 Je propose à un pote de réviser ensemble, avec des pauses.",a:20,p:100,n:"s1",f:"À deux, les pauses deviennent des vraies pauses."}]},
+ s1:{t:"Le lendemain, tu repenses à tout ça. Tu as besoin de souffler. Quelle porte ouvres-tu ?",c:[
+  {l:"Je teste une routine : pauses, eau, marche dehors, coucher à heure fixe.",a:20,p:100,n:"end",f:"Trois jours plus tard, la fatigue reste, mais tu la tiens mieux."},
+  {l:"J’en parle à l’infirmier·ère ou à la Maison des Adolescents.",a:25,p:100,n:"end",f:"On t’écoute sans te juger. Vous construisez un plan réaliste."}]},
+ s2:{t:"Quelques jours plus tard, tu y repenses de plus en plus souvent. Le sachet est toujours là.",c:[
+  {l:"Je m’en débarrasse et j’en parle à quelqu’un de confiance.",a:25,p:100,n:"end",f:"Le poids tombe de tes épaules. Tu n’es plus seul avec ça."},
+  {l:"Je teste juste une fois, pour voir.",a:-30,p:0,n:"end",f:"Le soulagement dure peu, la fatigue revient plus forte. Le Brouillard sait attendre."}]}}},
+{t:"FRÉQUENCE 03 · LE SIGNAL D’UN AMI",game:"uv",
+ gi:"Scanner UV : déplace ta lumière dans la zone sombre. Reste sur chaque inscription pour la révéler : rouge = prétextes du Brouillard, cyan = leviers de protection. 6 à trouver.",
+ intro:"Sam change : il s’isole, rate des cours, ses excuses se multiplient. Hier, il a lâché : « Ça détend, c’est rien. » Autour de lui, le Brouillard est dense. Tu veux l’aider sans le braquer.",
+ keys:["Écoute sans juger : « je suis là » vaut mieux que « tu fais n’importe quoi ».","S’inquiéter pour un ami et en parler à un adulte, ce n’est pas trahir : c’est protéger.","Drogues Info Service aide aussi les proches : 0 800 23 13 13."],
+ uv:[
+  {k:"d",t:"« TOUS LE FONT »",m:"Pression sociale : ce que font « tous les autres » est souvent exagéré."},
+  {k:"d",t:"« JUSTE ESSAYER »",m:"Banalisation : le « juste une fois » minimise les risques de dépendance."},
+  {k:"d",t:"« C’EST RIEN »",m:"Faux soulagement : calmer le stress aujourd’hui, l’aggraver demain."},
+  {k:"p",t:"DIRE NON SUFFIT",m:"Levier : un « non » clair est respectable, sans justification."},
+  {k:"p",t:"APPELER QUELQU’UN",m:"Levier : un adulte, un ami, un service gratuit et anonyme."},
+  {k:"p",t:"RESTER ENSEMBLE",m:"Levier : un collectif réel protège mieux que le Brouillard."}],
+ scenes:{
+ s0:{t:"Sam t’évite dans la cour. Ses yeux sont rouges, il rit trop fort à des blagues qui ne sont pas drôles.",c:[
+  {l:"Je lui dis, sans juger : « Je m’inquiète pour toi, je suis là. »",a:25,p:100,n:"s1",f:"Il détourne le regard, mais il a entendu. Tu le vois dans ses épaules."},
+  {l:"Je fais comme si de rien n’était.",a:-15,p:0,n:"s2",f:"Ça évite le malaise… mais le Brouillard avance sans témoin."},
+  {l:"J’en parle derrière son dos aux autres.",a:-25,p:0,n:"s2",f:"La rumeur circule vite. Sam se sent encore plus seul."},
+  {r:"radio",l:"📻 Je note ce que je vois (dates, changements) pour en parler à un adulte.",a:20,p:100,n:"s1",f:"Des faits, pas des jugements. Tu pourras être précis."},
+  {r:"eclaireur",l:"🔦 J’observe : sommeil, humeur, argent, nouveaux amis.",a:20,p:100,n:"s1",f:"Trois signaux concordent. Tu as de quoi appuyer ton inquiétude."},
+  {r:"soutien",l:"🤝 Je l’invite à une activité normale, sans pression.",a:20,p:100,n:"s1",f:"Il vient, sans parler. Une heure sans Brouillard, c’est déjà ça."}]},
+ s1:{t:"Sam finit par lâcher : « Ça va, lâche-moi. » Il a l’air gêné et fatigué.",c:[
+  {l:"Je laisse la porte ouverte : « Quand tu veux, je suis là. »",a:20,p:100,n:"end",f:"Pas de pression, pas d’insistance. Il sait où te trouver."},
+  {l:"J’insiste jusqu’à ce qu’il avoue.",a:-10,p:20,n:"end",f:"Il se braque et te fuit. Forcer l’aveu referme la porte."},
+  {l:"J’en parle à un adulte de confiance, même s’il est fâché.",a:25,p:100,n:"end",f:"Tu n’as pas trahi : tu as tendu un fil. Sam n’est plus seul, même s’il ne le sait pas encore."}]},
+ s2:{t:"Une semaine passe. Sam paraît encore plus éteint. Son silence te fait peur.",c:[
+  {l:"J’en parle à un adulte (famille, infirmerie, Maison des Adolescents).",a:25,p:100,n:"end",f:"Un adulte prend le relais avec douceur. Tu n’as pas à porter ça seul."},
+  {l:"J’attends encore, il va peut-être aller mieux.",a:-20,p:0,n:"end",f:"Attendre laisse du temps au Brouillard. Le bon moment, c’est maintenant."},
+  {l:"J’appelle Drogues Info Service pour savoir comment l’aider.",a:20,p:100,n:"end",f:"Au bout du fil, une voix te donne des conseils concrets, sans juger, sans rien noter."}]}}}
+];
+/* ===== ÉTAT & SAUVEGARDE ===== */
+const $=s=>document.querySelector(s),P=$("#panel"),KEY="mde_brouillard_v1";
+function fresh(){return{role:null,anc:70,score:0,done:[0,0,0],good:0,tot:0,mute:false}}
+function load(){try{return Object.assign(fresh(),JSON.parse(localStorage.getItem(KEY))||{})}catch(e){return fresh()}}
+let S=load(),tw,raf,gameOn=0,HOLD=0,fx={t:0,c:"#2ee6ff"},ENTRY=-1;
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+const q=new URLSearchParams(location.search);
+if(q.get("reset")){S=fresh();save()}
+ENTRY=(parseInt(q.get("mission"))||0)-1;
+function hud(){$("#ab").style.width=S.anc+"%";$("#ab").style.background=S.anc<40?"var(--r)":"var(--c)";$("#av").textContent=S.anc+"%";$("#sc").textContent="★ "+S.score;$("#mi").textContent=S.done.map(d=>d?"■":"□").join("")+" MISSIONS";$("#mu").textContent=S.mute?"🔇":"🔊"}
+function delta(a){S.anc=Math.max(0,Math.min(100,S.anc+a));if(S.anc<=0){S.anc=15;return"Le Brouillard te rattrape… mais l’équipe te retrouve. Demander de l’aide, ça marche : +15."}return""}
+/* ===== AUDIO SYNTHWAVE GÉNÉRATIVE ===== */
+let AC,mg,flt,step=0;
+function audio(){if(AC)return;try{AC=new(window.AudioContext||window.webkitAudioContext)();mg=AC.createGain();mg.gain.value=S.mute?0:.45;flt=AC.createBiquadFilter();flt.type="lowpass";flt.frequency.value=1500;flt.connect(mg);mg.connect(AC.destination);setInterval(tick,165)}catch(e){}}
+function tone(f,d,ty,v,out){if(!AC)return;const o=AC.createOscillator(),g=AC.createGain(),t=AC.currentTime;o.type=ty;o.frequency.value=f;g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.0008,t+d);o.connect(g);g.connect(out||mg);o.start(t);o.stop(t+d)}
+function tick(){if(!AC||S.mute)return;step++;flt.frequency.value=500+S.anc*22;
+  const ch=(step>>4)&3,root=[110,87.31,130.81,98][ch],rt=ch?[1,1.26,1.5,2]:[1,1.19,1.5,2],n=[0,1,2,3,2,1,3,2][step%8];
+  tone(root*2*rt[n]*((S.anc<35&&step%16==5)?1.06:1),.22,"sawtooth",.07,flt);
+  if(step%4==0)tone(root,.3,"square",.09,flt);
+  if(step%8==4)tone(root*4,.05,"triangle",.04)}
+function sfx(k){if(!AC||S.mute)return;if(k=="good"){tone(660,.1,"square",.07);setTimeout(()=>tone(990,.15,"square",.07),90)}else if(k=="bad")tone(140,.4,"sawtooth",.1);else tone(520,.04,"square",.03)}
+$("#mu").onclick=()=>{audio();S.mute=!S.mute;if(mg)mg.gain.value=S.mute?0:.45;save();hud()};
+addEventListener("pointerdown",audio,{once:true});
+/* ===== FOND : PARTICULES + GUIRLANDE RÉACTIVE ===== */
+const bg=$("#bg"),lt=$("#lt"),bx=bg.getContext("2d"),lx=lt.getContext("2d"),COL=["#ff2e4d","#2ee6ff","#ffd166","#ff2e4d","#9d7bff"];let W,H,pts=[];
+function rs(){W=bg.width=lt.width=innerWidth;H=bg.height=innerHeight;lt.height=70;pts=[];for(let i=0;i<Math.min(90,W/8);i++)pts.push({x:Math.random()*W,y:Math.random()*H,r:Math.random()*2+.5,v:Math.random()*.4+.15,p:Math.random()*6})}
+rs();addEventListener("resize",rs);
+function anim(ms){const t=ms/1000,low=1-S.anc/100;
+  bx.fillStyle="#07040d";bx.fillRect(0,0,W,H);
+  const g=bx.createRadialGradient(W/2,H,0,W/2,H,H);g.addColorStop(0,"rgba(255,46,77,"+(.1+low*.28)+")");g.addColorStop(1,"rgba(7,4,13,0)");bx.fillStyle=g;bx.fillRect(0,0,W,H);
+  pts.forEach(p=>{p.y-=p.v*(1+low*2);p.x+=Math.sin(t+p.p)*.3*(1+low*3);if(p.y<-5){p.y=H+5;p.x=Math.random()*W}
+    bx.fillStyle=Math.random()<low*.02?"#ff2e4d":"rgba(232,247,255,"+(.25+.2*Math.sin(t*2+p.p))+")";bx.beginPath();bx.arc(p.x,p.y,p.r,0,7);bx.fill()});
+  lx.clearRect(0,0,W,70);const n=Math.ceil(W/38),ys=[];for(let i=0;i<=n;i++)ys.push(8+14*Math.pow(Math.sin(i*1.05),2));
+  lx.strokeStyle="#1b1b1b";lx.lineWidth=2;lx.beginPath();for(let i=0;i<=n;i++){const x=i*W/n;i?lx.lineTo(x,ys[i]):lx.moveTo(x,ys[i])}lx.stroke();
+  if(fx.t>0)fx.t-=.016;
+  for(let i=0;i<=n;i++){let c=COL[i%5],on=true;
+    if(S.anc<40&&Math.random()<(.45-S.anc/100)*.8)on=false;
+    if(fx.t>0){c=fx.c;on=Math.sin(t*12-i*.6)>-.3}
+    const x=i*W/n,y=ys[i]+8;lx.save();lx.shadowColor=c;lx.shadowBlur=on?16:0;lx.fillStyle=on?c:"#2a2a2a";lx.beginPath();lx.ellipse(x,y+4,4.5,6.5,0,0,7);lx.fill();lx.restore();lx.fillStyle="#222";lx.fillRect(x-2,y-4,4,4)}
+  requestAnimationFrame(anim)}
+requestAnimationFrame(anim);
+/* ===== OUTILS D’ÉCRAN ===== */
+function typed(el,txt,cb){clearInterval(tw);let i=0;const fin=()=>{clearInterval(tw);el.textContent=txt;el.onclick=null;cb&&cb()};
+  tw=setInterval(()=>{el.textContent=txt.slice(0,++i);if(i%4==0)sfx("t");if(i>=txt.length)fin()},16);el.onclick=fin}
+function ptr(e,cv){const r=cv.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top]}
+/* ===== ÉCRANS ===== */
+function title(){cancelAnimationFrame(raf);gameOn=0;hud();const done=S.done.filter(x=>x).length;
+  P.innerHTML='<h1 class="logo">LE BROUILLARD</h1><p class="sub">OPÉRATION « MONDE À L’ENVERS » · MISSION PRÉVENTION</p><p>Une faille s’est ouverte dans ta ville. Elle brouille la mémoire, l’équilibre et les décisions. Une équipe de jeunes peut la refermer, à condition de rester <b>ancrée</b> et <b>ensemble</b>. Choisis ton rôle :</p><div class="roles">'+
+  Object.keys(R).map(k=>'<button class="role'+(S.role==k?" on":"")+'" data-k="'+k+'"><b>'+R[k].i+" "+R[k].n+'</b><small>'+R[k].d+'</small></button>').join("")+'</div>'+
+  (S.role&&done&&done<3?'<button class="ch go" id="rs">↻ REPRENDRE ('+done+'/3 missions)</button>':"")+
+  '<p class="tiny">Jeu de prévention : aucune scène de consommation. Aide gratuite et anonyme : Drogues Info Service 0 800 23 13 13.</p>';
+  P.querySelectorAll(".role").forEach(b=>b.onclick=()=>{const k=b.dataset.k;if(S.role!=k||done>=3){S=Object.assign(fresh(),{role:k,anc:R[k].a,mute:S.mute})}
+    S.role=k;if(!done)S.anc=R[k].a;save();audio();mission(ENTRY>=0&&ENTRY<3?ENTRY:Math.max(0,S.done.indexOf(0)))});
+  const rs=$("#rs");if(rs)rs.onclick=()=>{audio();mission(Math.max(0,S.done.indexOf(0)))}}
+function mission(i){const m=MISSIONS[i];hud();
+  P.innerHTML='<div class="tag">'+m.t+'</div><p class="nar" id="nar"></p><button class="ch go" id="nx" style="display:none">▶ ENTRER DANS LA FAILLE</button>';
+  typed($("#nar"),m.intro,()=>{$("#nx").style.display="block"});$("#nx").onclick=()=>scene(i,"s0")}
+function scene(i,id){const m=MISSIONS[i],s=m.scenes[id];hud();
+  P.innerHTML='<div class="tag">'+m.t+'</div><p class="nar" id="nar"></p><div id="chs"></div>';
+  typed($("#nar"),s.t,()=>{const box=$("#chs");s.c.filter(c=>!c.r||c.r==S.role).forEach(c=>{const b=document.createElement("button");b.className="ch"+(c.r?" rl":"");b.textContent=c.l;b.onclick=()=>pick(i,c);box.appendChild(b)})})}
+function pick(i,c){const rec=delta(c.a);S.score+=c.p;S.tot++;if(c.a>=15)S.good++;fx={t:1.6,c:c.a>=0?"#2ee6ff":"#ff2e4d"};sfx(c.a>=0?"good":"bad");save();hud();
+  P.innerHTML='<div class="tag">'+MISSIONS[i].t+'</div><p class="nar" id="nar"></p><p class="'+(c.a>=0?"ok":"ko")+'">'+(c.a>=0?"+":"")+c.a+" ANCRAGE · +"+c.p+' pts</p>'+(rec?'<p class="ko">'+rec+'</p>':"")+'<button class="ch go" id="nx">CONTINUER ▶</button>';
+  typed($("#nar"),c.f);$("#nx").onclick=()=>c.n=="end"?play(i):scene(i,c.n)}
+function play(i){const m=MISSIONS[i],ty=m.game,T={osc:"STABILISATION DE FRÉQUENCE",uv:"SCANNER UV · SIGNAUX & PRÉTEXTES",br:"PROTOCOLE D’ANCRAGE"};
+  P.innerHTML='<h2>'+T[ty]+'</h2><p class="tiny">'+m.gi+'</p><canvas id="gc"></canvas><p class="tiny" id="uvm"></p>';
+  const cv=$("#gc");cv.width=cv.clientWidth;cv.height=cv.clientHeight;gameOn=1;
+  const fin=r=>{gameOn=0;cancelAnimationFrame(raf);result(i,r)};
+  ({osc:gOsc,uv:gUV,br:gBr})[ty](cv,fin,m.uv)}
+function result(i,r){const p=Math.round(150*r),a=r>=.7?15:r>=.4?5:-10,rec=delta(a);S.score+=p;S.done[i]=1;fx={t:1.8,c:a>0?"#2ee6ff":"#ff2e4d"};sfx(a>0?"good":"bad");save();hud();
+  const m=MISSIONS[i],last=i>=2||S.done.every(x=>x);
+  P.innerHTML='<h2>'+(r>=.7?"SIGNAL RÉTABLI":r>=.4?"SIGNAL FRAGILE":"SIGNAL PERDU… MAIS L’ÉQUIPE TIENT")+'</h2><p>Performance : <b>'+Math.round(r*100)+'%</b> · <span class="'+(a>0?"ok":"ko")+'">'+(a>0?"+":"")+a+' ANCRAGE · +'+p+' pts</span></p>'+(rec?'<p class="ko">'+rec+'</p>':"")+
+  '<h3>🔑 Clés de protection de cette mission</h3><ul>'+m.keys.map(k=>"<li>"+k+"</li>").join("")+'</ul>'+
+  '<button class="ch go" id="nx">'+(last?"📘 MON PASSEPORT PRÉVENTION":"MISSION SUIVANTE ▶")+'</button>'+(last?"":'<button class="ch" id="pp">📘 Voir mon passeport maintenant</button>');
+  $("#nx").onclick=()=>last?passport():mission(Math.max(0,S.done.indexOf(0)));const pp=$("#pp");if(pp)pp.onclick=passport}
+function passport(){hud();const n=S.done.filter(x=>x).length,rk=S.score<500?"Recrue":S.score<900?"Éclaireur":S.score<1200?"Gardien du Collectif":"Légende du Collectif",pc=S.tot?Math.round(S.good/S.tot*100):0;
+  P.innerHTML='<h2>📘 PASSEPORT PRÉVENTION</h2><div class="pp">Rôle : <b>'+(S.role?R[S.role].i+" "+R[S.role].n:"—")+'</b> · Missions : <b>'+n+'/3</b> · Score : <b>'+S.score+'</b> · Rang : <b>'+rk+'</b><br>Ancrage final : <b>'+S.anc+'%</b> · Réflexes protecteurs : <b>'+S.good+'/'+S.tot+' ('+pc+'%)</b></div>'+
+  '<h3>🔑 Mes clés de protection</h3><ul>'+MISSIONS.map(m=>m.keys.map(k=>"<li>"+k+"</li>").join("")).join("")+'</ul>'+
+  '<h3>📞 Où trouver de l’aide</h3><ul>'+LOCAL.map(l=>"<li><b>"+l[0]+"</b> : "+l[1]+"</li>").join("")+'</ul>'+
+  '<h3>🏛 Pour l’équipe municipale</h3><p class="tiny">Ce passeport peut être imprimé ou enregistré en PDF. Les encarts [À COMPLÉTER] se modifient dans la constante <b>LOCAL</b> en tête de fichier ; les scénarios se modifient dans <b>MISSIONS</b>. Paramètres d’URL : <b>?mission=1</b>, <b>2</b> ou <b>3</b>, et <b>?reset=1</b> pour effacer la sauvegarde.</p>'+
+  '<button class="ch noprint" id="pr">🖨 Imprimer / enregistrer en PDF</button><button class="ch noprint" id="rp">↻ Recommencer l’aventure</button>';
+  $("#pr").onclick=()=>window.print();$("#rp").onclick=()=>{S=Object.assign(fresh(),{mute:S.mute});save();ENTRY=-1;title()}}
+/* ===== MINI-JEU 1 : OSCILLOSCOPE ===== */
+function gOsc(cv,done){const c=cv.getContext("2d"),w=cv.width,h=cv.height,k=R[S.role].osc,f0=2.5+Math.random()*2.5,p0=Math.random()*6.28;let f=1,ph=0,tt=0,st=0,last=performance.now();
+  const mv=e=>{const p=ptr(e,cv);f=1+5*Math.max(0,Math.min(1,p[0]/w));ph=6.283*Math.max(0,Math.min(1,p[1]/h))};cv.onpointermove=mv;cv.onpointerdown=mv;
+  function wave(fr,pa,col,nz,lw){c.strokeStyle=col;c.lineWidth=lw;c.beginPath();for(let x=0;x<=w;x+=3){const y=h/2+Math.sin(x/w*fr*12.566+pa)*h*.3+(Math.random()-.5)*nz;x?c.lineTo(x,y):c.moveTo(x,y)}c.stroke()}
+  function loop(n){const dt=Math.min(.05,(n-last)/1000);last=n;tt+=dt;
+    const ft=f0+Math.sin(tt*.5)*.5,pt=p0+tt*.3,d=((ph-pt)%6.283+6.283)%6.283,e2=Math.min(d,6.283-d),m=Math.abs(f-ft)<.4*k&&e2<.75*k;
+    st=Math.max(0,Math.min(100,st+dt*(m?20:-5)));
+    c.fillStyle="#020a0a";c.fillRect(0,0,w,h);c.strokeStyle="#0f3a3a";c.lineWidth=1;for(let x=0;x<w;x+=w/10){c.beginPath();c.moveTo(x,0);c.lineTo(x,h);c.stroke()}for(let y=0;y<h;y+=h/6){c.beginPath();c.moveTo(0,y);c.lineTo(w,y);c.stroke()}
+    wave(ft,pt,"rgba(46,230,255,.7)",(1-st/100)*14,2);wave(f,ph,m?"#7dff9b":"#ff2e4d",0,3);
+    c.fillStyle="#0a2a2a";c.fillRect(10,h-18,w-20,8);c.fillStyle=m?"#7dff9b":"#ffd166";c.fillRect(10,h-18,(w-20)*st/100,8);
+    c.fillStyle="#e8f7ff";c.font="12px Courier New";c.fillText(m?"SIGNAL ACCROCHÉ…":"BROUILLARD : cherche la fréquence",10,16);c.fillText(Math.max(0,Math.ceil(35-tt))+" s",w-44,16);
+    if(st>=100||tt>=35){done(st/100);return}raf=requestAnimationFrame(loop)}
+  raf=requestAnimationFrame(loop)}
+/* ===== MINI-JEU 2 : SCANNER UV ===== */
+function gUV(cv,done,list){const c=cv.getContext("2d"),w=cv.width,h=cv.height,Rr=62*R[S.role].uv,msg=$("#uvm");let px=w/2,py=h/2,tt=0,n=0,last=performance.now();
+  const L=list.slice().sort(()=>Math.random()-.5).map((o,i)=>({o:o,x:(i%2+.5)*w/2+(Math.random()-.5)*w*.1,y:(Math.floor(i/2)+.5)*h/3+(Math.random()-.5)*h*.08,r:0,d:0})),fs=Math.max(10,Math.min(15,(w/2-12)/(17*.62)));
+  const mv=e=>{const p=ptr(e,cv);px=p[0];py=p[1]};cv.onpointermove=mv;cv.onpointerdown=mv;
+  function loop(nw){const dt=Math.min(.05,(nw-last)/1000);last=nw;tt+=dt;
+    L.forEach(it=>{if(it.d)return;if(Math.hypot(px-it.x,py-it.y)<Rr*.75)it.r+=dt;else it.r=Math.max(0,it.r-dt*.6);if(it.r>.6){it.d=1;n++;sfx(it.o.k=="p"?"good":"bad");msg.textContent=(it.o.k=="p"?"🟦 ":"🟥 ")+it.o.m;msg.style.color=it.o.k=="p"?"#2ee6ff":"#ff2e4d"}});
+    c.fillStyle="#030208";c.fillRect(0,0,w,h);c.font="bold "+fs+"px Courier New";c.textAlign="center";c.textBaseline="middle";
+    L.forEach(it=>{if(it.d){c.fillStyle=it.o.k=="p"?"#5ef0ff":"#ff5c7a";c.fillText(it.o.t,it.x,it.y)}});
+    c.save();c.beginPath();c.arc(px,py,Rr,0,7);c.clip();const g=c.createRadialGradient(px,py,0,px,py,Rr);g.addColorStop(0,"rgba(150,100,255,.55)");g.addColorStop(1,"rgba(80,40,160,.15)");c.fillStyle=g;c.fillRect(0,0,w,h);
+    L.forEach(it=>{if(!it.d){c.fillStyle="rgba(210,190,255,.6)";c.fillText(it.o.t,it.x,it.y)}});c.restore();
+    c.strokeStyle="#9d7bff";c.lineWidth=1.5;c.beginPath();c.arc(px,py,Rr,0,7);c.stroke();
+    c.textAlign="left";c.textBaseline="alphabetic";c.fillStyle="#e8f7ff";c.font="12px Courier New";c.fillText(n+"/6 · "+Math.max(0,Math.ceil(45-tt))+" s",8,16);
+    if(n>=6||tt>=45){done(n/6);return}raf=requestAnimationFrame(loop)}
+  raf=requestAnimationFrame(loop)}
+/* ===== MINI-JEU 3 : RESPIRATION / ANCRAGE ===== */
+function gBr(cv,done){const c=cv.getContext("2d"),w=cv.width,h=cv.height,cyc=5*R[S.role].br,N=6,cx=w/2,cy=h/2,mr=Math.min(w,h)*.42;let tt=0,p=0,sy=0,hold=0,last=performance.now();
+  cv.onpointerdown=()=>hold=1;cv.onpointerup=cv.onpointerleave=cv.onpointercancel=()=>hold=0;
+  function loop(n){const dt=Math.min(.05,(n-last)/1000);last=n;tt+=dt;
+    const g=.5-.5*Math.cos(tt/cyc*6.283),rising=Math.sin(tt/cyc*6.283)>0;p=Math.max(0,Math.min(1,p+((hold||HOLD)?1:-1)*dt*2/cyc));
+    const sync=1-Math.abs(g-p);sy+=sync*dt;
+    c.fillStyle="#02060c";c.fillRect(0,0,w,h);
+    for(let i=0;i<6;i++){const a=i/6*6.283-1.57,x=cx+Math.cos(a)*mr*1.1,y=cy+Math.sin(a)*mr*1.1,lit=sync>.8&&(tt/cyc*6)%6>i*.5;c.fillStyle=lit?"#ffd166":"#2a2a1a";c.shadowColor="#ffd166";c.shadowBlur=lit?14:0;c.beginPath();c.arc(x,y,7,0,7);c.fill();c.shadowBlur=0}
+    c.strokeStyle="#2ee6ff";c.lineWidth=3;c.beginPath();c.arc(cx,cy,24+g*mr*.8,0,7);c.stroke();
+    const col=sync>.8?"#7dff9b":sync>.55?"#ffd166":"#ff2e4d";c.fillStyle=col+"aa";c.shadowColor=col;c.shadowBlur=18;c.beginPath();c.arc(cx,cy,24+p*mr*.8,0,7);c.fill();c.shadowBlur=0;
+    c.fillStyle="#e8f7ff";c.font="bold 15px Courier New";c.textAlign="center";c.fillText(rising?"INSPIRE · MAINTIENS":"EXPIRE · RELÂCHE",cx,18);c.font="12px Courier New";c.fillText("cycle "+Math.min(N,Math.floor(tt/cyc)+1)+"/"+N+" · ancrage "+Math.round(sync*100)+"%",cx,h-8);
+    if(tt>=N*cyc){done(sy/tt);return}raf=requestAnimationFrame(loop)}
+  raf=requestAnimationFrame(loop)}
+addEventListener("keydown",e=>{if(e.code=="Space"&&gameOn){e.preventDefault();HOLD=1}});
+addEventListener("keyup",e=>{if(e.code=="Space")HOLD=0});
+/* ===== DÉMARRAGE ===== */
+hud();
+if(S.role&&ENTRY>=0&&ENTRY<3)mission(ENTRY);else title();
+})();
+</script>
+</body>
+</html>
